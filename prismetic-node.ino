@@ -1,16 +1,22 @@
 //Sensor pinout
 //CONSTANTES
 const int SENSORES = 2;
-const int MUESTRAS = 5;
+const int MUESTRAS = 11;
+const int MUESTRAS_PROMEDIADAS = 5;
 const float TRIGGER = 800; //mV
-const float HISTERESIS = 300; //mV
+const float HISTERESIS = 200; //mV
+const unsigned int TRIGGER_DUR_MIN = 25; //ms
+const unsigned int TRIGGER_DIFF_MAX = 500; //ms
+const unsigned int TRIGGER_DELAY_MAX = 5000; //ms
 
 //Timing variables
-long readTimer = 0, timeOut3 = 0;
+long readTimer = 0;
 
 //VARIABLES
-float sen1antes = 0, sen2antes = 0, aux, sen1, sen2, sen1mV, sen2mV;
-boolean ping1first = false, ping1SS = false, ping2SS = false, nose = false, nose2 = false, ping1entrada = false;
+float sen1antes = 0, sen2antes = 0, sen1ahora, sen2ahora;
+long sen1Timer = 0, sen2Timer = 0;
+unsigned int sen1Duration = 0, sen2Duration = 0;
+boolean ping1SS = false, ping2SS = false;
 int gente = 0, genteAntes = 0;
 
 //LECTURAS
@@ -36,155 +42,161 @@ payload_t payload;
 unsigned char EEPROMAddress = 0;
 
 void setup() {
-  delay(60);                                                          //Warm-up del sensor
   Serial.begin(9600);
-  delaytimer = millis();                                              //inicializar timer de muestreo
-  SPI.begin();
-  radio.begin();
-  network.begin(90, this_node);                                       //crear la network
-  payload.totalPeopleInside = EEPROM.read(EEPROMAddress);             //inicializar la gente que hay adentro (guardado en EEPROM)
-  payload.deltaPeople = 0;
   Serial.println("PRISMETIC by CRAN.IO");
   Serial.print("Starting...");
+  SPI.begin();
+  radio.begin();
+  network.begin(90, this_node);  //crear la network
+  gente = EEPROM.read(EEPROMAddress); //inicializar la gente que hay adentro (guardado en EEPROM)
+  payload.totalPeopleInside = gente;
+  payload.deltaPeople = 0;
   Serial.println(gente);
-
+  delay(60);                                                          //Warm-up del sensor
+  readTimer = millis();
 }
 
 void loop() {
-  if ((readTimer - millis()) > 6) {                                   //Adquisicion de datos cada 6ms, 5 muestras de cada sensor son 30ms, se ordenan de mayor a menor y se promedian las 3 del medio
+  if ((millis() - readTimer) > 1) {                                   //Adquisicion de datos cada 6ms, 5 muestras de cada sensor son 30ms, se ordenan de mayor a menor y se promedian las 3 del medio
     readings[0][readIndex] = analogRead(A0);
     readings[1][readIndex] = analogRead(A1);
     readIndex++;
+    if (readIndex >= MUESTRAS) {
+      readIndex = 0;
+    }
+    int i, j;
+    unsigned int ordered[SENSORES][MUESTRAS];
+    for (i = 1; i < MUESTRAS; i++)
+      ordered[0][i] = readings[0][i];
+    for (i = 1; i < MUESTRAS; i++)
+      ordered[1][i] = readings[1][i];
     
-    if(readIndex >= MUESTRAS){
+    for (i = 1; i < MUESTRAS; i++) {                                //Ordeno el primer sensor de menor a mayor
+      unsigned int tmp = ordered[0][i];
+      for (j = i; j >= 1 && tmp < ordered[0][j - 1]; j--)
+        ordered[0][j] = ordered[0][j - 1];
+      ordered[0][j] = tmp;
+    }
 
-      unsigned int aux;
-      for (int i = 0; i < (MUESTRAS - 1); i++) {
-        if (readings[1][i] > readings[1][i + 1])
-          aux = readings[1][i];
-        readings[1][i] = readings[1][i + 1];
-        readings[1][i + 1] = aux;
+    for (i = 1; i < MUESTRAS; i++) {                                //Ordeno el segundo sensor de menor a mayor
+      unsigned int tmp = ordered[1][i];
+      for (j = i; j >= 1 && tmp < ordered[1][j - 1]; j--)
+        ordered[1][j] = ordered[1][j - 1];
+      ordered[1][j] = tmp;
+    }
+
+    float sen1 = 0, sen2 = 0;
+    for (i = (MUESTRAS-MUESTRAS_PROMEDIADAS)/2; i < (MUESTRAS+MUESTRAS_PROMEDIADAS)/2; i++) {
+      sen1 += ordered[0][i];
+      sen2 += ordered[1][i];
+    }
+    sen1 /= (MUESTRAS_PROMEDIADAS);
+    sen2 /=  (MUESTRAS_PROMEDIADAS);
+
+    float sen1ahora = ((5 * sen1) / 1024);                                        // Pasaje a mV de los datos obtenidos
+    sen1ahora *= 1000;
+
+    float sen2ahora = ((5 * sen2) / 1024);
+    sen2ahora *= 1000;
+
+    //Serial.println(sen2ahora);
+
+    /*Serial.print("Sensor 1: ");
+      Serial.print(sen1ahora);
+      Serial.print(". Sensor 2: ");
+      Serial.print(sen2ahora);
+      Serial.println(".");*/
+
+    if (ping1SS == false) {
+      if (sen1Timer > 0) {
+        if ((millis() - sen1Timer) > TRIGGER_DELAY_MAX) { //Si paso mas de TRIGGER_DELAY_MAX mato este sensor
+          sen1Timer = 0;
+        }
       }
-
-    for (int i = 0; i < (MUESTRAS - 1); i++) {
-      if (readings[0][i] > readings[0][i + 1])
-        aux = readings[0][i];
-      readings[0][i] = readings[0][i + 1];
-      readings[0][i + 1] = aux;
+      else if ((sen1ahora > TRIGGER) && (sen1antes > TRIGGER)) { //DETECCION DEL SENSOR 1
+        ping1SS = true;
+        sen1Timer = millis();
+        sen1Duration = 0;
+      }
     }
-
-    for (int i = 1; i < (MUESTRAS - 1); i++) {
-      sen1 += readings[0][i];
-      sen2 += readings[1][i];
-    }
-    sen1 /= (MUESTRAS - 2);
-    sen2 /=  (MUESTRAS - 2);
-
-    float sen1mV = ((5 * sen1) / 1024);                                        // Pasaje a mV de los datos obtenidos
-    sen1mV *= 1000;
-
-    float sen2mV = ((5 * sen2) / 1024);
-    sen2mV *= 1000;
-
-    if (((sen1antes > TRIGGER) && (sen1mV > TRIGGER)) && (ping1SS == false)) { //DETECCION DEL SENSOR 1
-      ping1SS = true;
-      if (ping2SS == false)
-        ping1first = true;
-    }
-
-    if (((sen2antes > TRIGGER) && (sen2mV > TRIGGER)) && (ping2SS == false) ) { //DETECCION DEL SENSR 2
-      ping2SS = true;
-    }
-    if ((ping1SS == true) && (sen1antes < (TRIGGER - HISTERESIS)) && (sen1mV < (TRIGGER - HISTERESIS)) && (ping2SS == true) && (sen2antes < (TRIGGER - HISTERESIS)) && (sen2mV < (TRIGGER - HISTERESIS))) {
-      //Set detection variables to default values
+    else if ((sen1antes < (TRIGGER - HISTERESIS)) && (sen1ahora < (TRIGGER - HISTERESIS))) { //BAJA DEL SENSOR 1
       ping1SS = false;
-      ping2SS = false;
-      ping1first = false;
-      nose = false;
+      sen1Duration = millis() - sen1Timer; //Duracion del pulso 1
     }
 
-    if (((ping2SS == true) && (ping1SS == true) && (nose == false))) {          //sumar o restar una persona segun que sensor sea la entrada y cual detecto primero a la persona/objeto
-      nose = true;
-      nose2 = false;
-      ping1SS = false;
+    if (ping2SS == false) {
+      if (sen2Timer > 0) {
+        if ((millis() - sen2Timer) > TRIGGER_DELAY_MAX) { //Si paso mas de TRIGGER_DELAY_MAX mato este sensor
+          sen2Timer = 0;
+        }
+      }
+      else if ((sen2ahora > TRIGGER) && (sen2antes > TRIGGER)) { //DETECCION DEL SENSOR 2
+        ping2SS = true;
+        sen2Timer = millis();
+      }
+    }
+    else if ((sen2antes < (TRIGGER - HISTERESIS)) && (sen2ahora < (TRIGGER - HISTERESIS))) { //BAJA DEL SENSOR 2
       ping2SS = false;
-      if (ping1first == true) {
-        if (ping1entrada == true) {
+      sen2Duration = millis() - sen2Timer; //Duracion del pulso 2
+    }
+
+    if ((ping1SS == false ) && (ping2SS == false) && (sen1Timer > 0) && (sen2Timer > 0)) { //Si ya bajaron los sensores
+      Serial.print("Sensor 1 - Timer:");
+        Serial.print(sen1Timer);
+        Serial.print(", Duration: ");
+        Serial.print(sen1Duration);
+        Serial.println(".");
+        Serial.print("Sensor 2 - Timer: ");
+        Serial.print(sen2Timer);
+        Serial.print(", Duration: ");
+        Serial.print(sen2Duration);
+        Serial.println(".");
+      if ((abs(sen1Timer - sen2Timer) < TRIGGER_DIFF_MAX) && (sen1Duration > TRIGGER_DUR_MIN) && (sen2Duration > TRIGGER_DUR_MIN)) {
+        //Si la diferencia entre los sensores es menor que TRIGGER_DIFF_MAX y la duracion de los pulsos es mas que TRIGGER_DUR_MIN
+        if ( sen1Timer < sen2Timer)
           gente++ ;
-        } else {
+        else
           gente--;
-        }
-      } else {
-        if (ping1entrada == true) {
-          gente--;
-        } else {
-          gente++;
-        }
+
+        if (gente < 0)
+          gente = 0;
       }
-      ping1first = false;
-      gente = constrain(gente, 0, 9999999);
+      sen1Timer = 0;
+      sen2Timer = 0;
+      sen1Duration = 0;
+      sen2Duration = 0;
     }
-
-    //Volver a false los ping1SS y ping2SS si se activa uno y el otro no
-    if (((ping1SS == true) || (ping2SS == true)) && (nose2 == false)  &&  (sen1antes < (TRIGGER - HISTERESIS))  &&  (sen1mV < (TRIGGER - HISTERESIS))  &&  (sen2antes < (TRIGGER - HISTERESIS))  &&  (sen2mV < (TRIGGER - HISTERESIS))  ) {
-      nose2 = true;
-      timeOut3 = millis();
-    }
-    if (((ping1SS == true) || (ping2SS == true) ) && (nose2 == true)) {
-      if ((millis() - timeOut3) > 1000 ) {                                  //Tiempo maximo de diferencia entre la activacion de un sensor y el otro para considerar el paso de una persona o no
-        ping1SS = false;
-        ping2SS = false;
-        ping1first = false;
-        nose = false;
-        nose2 = false;
-      }
-    }
-    sen1antes = sen1mV;
-    sen2antes = sen2mV;
-    gente = constrain(gente, 0, 9999999);      //constrain para que no haya gente negativa adentro, modificar en el futuro
-
-
-    delaytimer = millis();
+    sen1antes = sen1ahora;
+    sen2antes = sen2ahora;
+    readTimer = millis();
   }
 
   //Connection update
   network.update();                          // Check the network regularly
 
-  if (genteAntes < gente) {
-    Serial.print("ENTRADA. TOTAL: ");
-    Serial.println(gente);
+  if (genteAntes != gente) {
+    if (gente > genteAntes)
+      Serial.print("ENTRADA.");
+    else
+      Serial.print("SALIDA.");
+    Serial.print("TOTAL: ");
     Serial.println(gente);
     payload.totalPeopleInside = gente;
-    EEPROM.write(EEPROMAddress, payload.totalPeopleInside);
+    EEPROM.write(EEPROMAddress, gente);
 
     //Post to Rx
     RF24NetworkHeader header(other_node);
     bool ok = network.write(header, &payload, sizeof(payload));
     Serial.print("Sending...");
-    if (ok)
+    if (ok) {
+      genteAntes = gente;
       Serial.println("ok.");
-    else
+    }
+    else {
       Serial.println("failed.");
+    }
     genteAntes = gente;
   }
-  else if (genteAntes > gente) {                                      //diferenciacion entre entrada o salida, imprimir en serial y enviar por RF
-    Serial.print("SALIDA. TOTAL: ");
-    Serial.println(gente);
-    Serial.println(gente);
-    payload.totalPeopleInside = gente;
-    EEPROM.write(EEPROMAddress, payload.totalPeopleInside);
-
-    //Post to Rx
-    RF24NetworkHeader header(other_node);
-    bool ok = network.write(header, &payload, sizeof(payload));
-    Serial.print("Sending...");
-    if (ok)
-      Serial.println("ok.");
-    else
-      Serial.println("failed.");
-    genteAntes = gente;
-  }
-
 
   if (Serial.available() > 0) {                       //opciones por serial para resetear o establecer la gente en 5 para pruebas
     int input = Serial.read();
@@ -201,6 +213,5 @@ void loop() {
         break;
     }
   }
-
 }
 
