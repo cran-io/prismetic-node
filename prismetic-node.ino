@@ -55,18 +55,18 @@ void setup() {
   Serial.println(gente);
   delay(60);                                                          //Warm-up del sensor
   
-  for (int i = 1; i < MUESTRAS; i++)                                      //Init readings
+  for (int i = 1; i < MUESTRAS; i++){                                     //Init readings
     readings[0][i] = analogRead(A0);
-  for (int i = 1; i < MUESTRAS; i++)
     readings[1][i] = analogRead(A1);
-  readingsFloor[0] = analogRead(A0);
-  readingsFloor[0] = analogRead(A1);
+  }
+  readingsFloor[0] = readings[0][readIndex];
+  readingsFloor[1] = readings[1][readIndex];
   
   readTimer = millis();
 }
 
 void loop() {
-  if ((millis() - readTimer) > 1) {                                   //Adquisicion de datos cada 6ms, 5 muestras de cada sensor son 30ms, se ordenan de mayor a menor y se promedian las 3 del medio
+  if ((millis() - readTimer) > 1) {                                   //Adquisicion de datos cada 1ms, 11 muestras de cada sensor son 11ms, se ordenan de mayor a menor y se promedian las 5 del medio
     readings[0][readIndex] = analogRead(A0);
     readings[1][readIndex] = analogRead(A1);
     
@@ -92,7 +92,7 @@ void loop() {
     }
 
     float sen1ahora = 0, sen2ahora = 0;
-    for (i = (MUESTRAS-MUESTRAS_PROMEDIADAS)/2; i < (MUESTRAS+MUESTRAS_PROMEDIADAS)/2; i++) {
+    for (i = (MUESTRAS-MUESTRAS_PROMEDIADAS)/2; i < (MUESTRAS+MUESTRAS_PROMEDIADAS)/2; i++) { //Promedio de las muestras del medio
       sen1ahora += ordered[0][i];
       sen2ahora += ordered[1][i];
     }
@@ -100,12 +100,6 @@ void loop() {
     sen2ahora /=  (MUESTRAS_PROMEDIADAS);
 
     //Serial.println(sen2ahora);
-
-    /*Serial.print("Sensor 1: ");
-      Serial.print(sen1ahora);
-      Serial.print(". Sensor 2: ");
-      Serial.print(sen2ahora);
-      Serial.println(".");*/
 
     if (ping1SS == false) {
       if (sen1Timer > 0) {
@@ -166,11 +160,14 @@ void loop() {
       sen1Duration = 0;
       sen2Duration = 0;
     }
-    sen1antes = sen1ahora;
+    
+    sen1antes = sen1ahora; //1 valor de historial
     sen2antes = sen2ahora;
-    readingsFloor[0] = 0.99f*readingsFloor[0] + 0.01f*readings[0][readIndex];
+    
+    readingsFloor[0] = 0.99f*readingsFloor[0] + 0.01f*readings[0][readIndex]; //Este es un promedio que se actualiza muy lento
     readingsFloor[1] = 0.99f*readingsFloor[1] + 0.01f*readings[1][readIndex];
-    readIndex++;
+    
+    readIndex++;  //Arreglo circular
     if (readIndex >= MUESTRAS) {
       readIndex = 0;
     }
