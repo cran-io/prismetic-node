@@ -3,8 +3,8 @@
 const int SENSORES = 2;
 const int MUESTRAS = 11;
 const int MUESTRAS_PROMEDIADAS = 5;
-const float TRIGGER = 800; //mV
-const float HISTERESIS = 200; //mV
+const float TRIGGER = 60; //Cada unidad son 5mV aprox
+const float HISTERESIS = 20; //Cada unidad son 5mV aprox
 const unsigned int TRIGGER_DUR_MIN = 25; //ms
 const unsigned int TRIGGER_DIFF_MAX = 500; //ms
 const unsigned int TRIGGER_DELAY_MAX = 5000; //ms
@@ -13,7 +13,7 @@ const unsigned int TRIGGER_DELAY_MAX = 5000; //ms
 long readTimer = 0;
 
 //VARIABLES
-float sen1antes = 0, sen2antes = 0, sen1ahora, sen2ahora;
+float sen1antes = 0, sen2antes = 0;
 long sen1Timer = 0, sen2Timer = 0;
 unsigned int sen1Duration = 0, sen2Duration = 0;
 boolean ping1SS = false, ping2SS = false;
@@ -22,6 +22,7 @@ int gente = 0, genteAntes = 0;
 //LECTURAS
 unsigned int readings[SENSORES][MUESTRAS];
 unsigned int readIndex = 0;
+float readingsFloor[SENSORES];
 
 //Connection Libraries
 #include <RF24Network.h>
@@ -53,6 +54,14 @@ void setup() {
   payload.deltaPeople = 0;
   Serial.println(gente);
   delay(60);                                                          //Warm-up del sensor
+  
+  for (int i = 1; i < MUESTRAS; i++)                                      //Init readings
+    readings[0][i] = analogRead(A0);
+  for (int i = 1; i < MUESTRAS; i++)
+    readings[1][i] = analogRead(A1);
+  readingsFloor[0] = analogRead(A0);
+  readingsFloor[0] = analogRead(A1);
+  
   readTimer = millis();
 }
 
@@ -60,10 +69,7 @@ void loop() {
   if ((millis() - readTimer) > 1) {                                   //Adquisicion de datos cada 6ms, 5 muestras de cada sensor son 30ms, se ordenan de mayor a menor y se promedian las 3 del medio
     readings[0][readIndex] = analogRead(A0);
     readings[1][readIndex] = analogRead(A1);
-    readIndex++;
-    if (readIndex >= MUESTRAS) {
-      readIndex = 0;
-    }
+    
     int i, j;
     unsigned int ordered[SENSORES][MUESTRAS];
     for (i = 1; i < MUESTRAS; i++)
@@ -85,19 +91,13 @@ void loop() {
       ordered[1][j] = tmp;
     }
 
-    float sen1 = 0, sen2 = 0;
+    float sen1ahora = 0, sen2ahora = 0;
     for (i = (MUESTRAS-MUESTRAS_PROMEDIADAS)/2; i < (MUESTRAS+MUESTRAS_PROMEDIADAS)/2; i++) {
-      sen1 += ordered[0][i];
-      sen2 += ordered[1][i];
+      sen1ahora += ordered[0][i];
+      sen2ahora += ordered[1][i];
     }
-    sen1 /= (MUESTRAS_PROMEDIADAS);
-    sen2 /=  (MUESTRAS_PROMEDIADAS);
-
-    float sen1ahora = ((5 * sen1) / 1024);                                        // Pasaje a mV de los datos obtenidos
-    sen1ahora *= 1000;
-
-    float sen2ahora = ((5 * sen2) / 1024);
-    sen2ahora *= 1000;
+    sen1ahora /= (MUESTRAS_PROMEDIADAS);
+    sen2ahora /=  (MUESTRAS_PROMEDIADAS);
 
     //Serial.println(sen2ahora);
 
@@ -113,13 +113,13 @@ void loop() {
           sen1Timer = 0;
         }
       }
-      else if ((sen1ahora > TRIGGER) && (sen1antes > TRIGGER)) { //DETECCION DEL SENSOR 1
+      else if ((sen1ahora > (readingsFloor[0] + TRIGGER)) && (sen1antes > (readingsFloor[0] + TRIGGER))) { //DETECCION DEL SENSOR 1
         ping1SS = true;
         sen1Timer = millis();
         sen1Duration = 0;
       }
     }
-    else if ((sen1antes < (TRIGGER - HISTERESIS)) && (sen1ahora < (TRIGGER - HISTERESIS))) { //BAJA DEL SENSOR 1
+    else if ((sen1antes < (readingsFloor[0] + TRIGGER - HISTERESIS)) && (sen1ahora < (readingsFloor[0] + TRIGGER - HISTERESIS))) { //BAJA DEL SENSOR 1
       ping1SS = false;
       sen1Duration = millis() - sen1Timer; //Duracion del pulso 1
     }
@@ -130,12 +130,12 @@ void loop() {
           sen2Timer = 0;
         }
       }
-      else if ((sen2ahora > TRIGGER) && (sen2antes > TRIGGER)) { //DETECCION DEL SENSOR 2
+      else if ((sen2ahora > (readingsFloor[1] + TRIGGER)) && (sen2antes > (readingsFloor[1] + TRIGGER))) { //DETECCION DEL SENSOR 2
         ping2SS = true;
         sen2Timer = millis();
       }
     }
-    else if ((sen2antes < (TRIGGER - HISTERESIS)) && (sen2ahora < (TRIGGER - HISTERESIS))) { //BAJA DEL SENSOR 2
+    else if ((sen2antes < (readingsFloor[1] + TRIGGER - HISTERESIS)) && (sen2ahora < (readingsFloor[1] + TRIGGER - HISTERESIS))) { //BAJA DEL SENSOR 2
       ping2SS = false;
       sen2Duration = millis() - sen2Timer; //Duracion del pulso 2
     }
@@ -168,6 +168,12 @@ void loop() {
     }
     sen1antes = sen1ahora;
     sen2antes = sen2ahora;
+    readingsFloor[0] = 0.99f*readingsFloor[0] + 0.01f*readings[0][readIndex];
+    readingsFloor[1] = 0.99f*readingsFloor[1] + 0.01f*readings[1][readIndex];
+    readIndex++;
+    if (readIndex >= MUESTRAS) {
+      readIndex = 0;
+    }
     readTimer = millis();
   }
 
