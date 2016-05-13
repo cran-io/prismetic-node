@@ -47,7 +47,7 @@ const unsigned int POST_PERIOD = 30000;
 const unsigned int POST_RETRY = 5000;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(57600);
   Serial.println("PRISMETIC by CRAN.IO");
   Serial.print("Starting... ");
   SPI.begin();
@@ -62,9 +62,14 @@ void setup() {
   for (int i = 1; i < MUESTRAS; i++){                                 //Init readings
     readings[0][i] = analogRead(A0);
     readings[1][i] = analogRead(A1);
+    delay(10);
   }
-  readingsFloor[0] = readings[0][readIndex];
-  readingsFloor[1] = readings[1][readIndex];
+  for (int i = 1; i < MUESTRAS; i++){                                 //Init floor
+    readingsFloor[0] += readings[0][i];
+    readingsFloor[1] += readings[1][i];
+  }
+  readingsFloor[0] /= MUESTRAS;
+  readingsFloor[1] /= MUESTRAS;
 }
 
 void loop() {
