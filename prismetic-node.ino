@@ -1,5 +1,10 @@
+//Connection
+#include <RF24Network.h>
+#include <RF24.h>
+#include <SPI.h>
+#include <EEPROM.h>
+
 //Sensor pinout
-//CONSTANTES
 const unsigned int SENSORES = 2;
 const unsigned int MUESTRAS = 11;
 const unsigned int MUESTRAS_PROMEDIADAS = 5;
@@ -12,23 +17,20 @@ const unsigned int TRIGGER_DELAY_MAX = 5000; //ms
 //Timing variables
 const unsigned int MUESTRAS_PERIOD = 1; //1ms
 unsigned long readTimer = 0;
+const unsigned int POST_PERIOD = 30000;
+const unsigned int POST_RETRY = 5000;
+unsigned long postTimer = 0;
 
-//VARIABLES
+//Sensor variables
 float sen1antes = 0, sen2antes = 0;
 long sen1Timer = 0, sen2Timer = 0;
 unsigned int sen1Duration = 0, sen2Duration = 0;
 boolean ping1SS = false, ping2SS = false;
 
-//LECTURAS
+//Reading variables
 unsigned int readings[SENSORES][MUESTRAS];
 unsigned int readIndex = 0;
 float readingsFloor[SENSORES];
-
-//Connection Libraries
-#include <RF24Network.h>
-#include <RF24.h>
-#include <SPI.h>
-#include <EEPROM.h>
 
 //Connection variables
 RF24 radio(8, 9);                   // nRF24L01(+) radio attached using Getting Started board
@@ -42,9 +44,6 @@ struct payload_t {                  // Structure of our payload
 };
 payload_t payload;
 unsigned char EEPROMAddress = 0;
-unsigned long postTimer = 0;
-const unsigned int POST_PERIOD = 30000;
-const unsigned int POST_RETRY = 5000;
 
 void setup() {
   Serial.begin(57600);
