@@ -52,6 +52,7 @@ void setup() {
   SPI.begin();
   radio.begin();
   radio.setPALevel(RF24_PA_LOW);
+  radio.setDataRate(RF24_250KBPS);
   network.begin(90, this_node);  //crear la network
   payload.totalPeopleInside = EEPROM.read(EEPROMAddress); //inicializar la gente que hay adentro (guardado en EEPROM)
   payload.peopleIn = 0;
