@@ -35,8 +35,8 @@ struct payload_t {                 // Structure of our payload
 void setup(void)
 {
   Serial.begin(57600);
-  Serial.println("PRISMETIC by CRAN.IO");
-  Serial.println("Arduino on base");
+  //Serial.println("PRISMETIC by CRAN.IO");
+  //Serial.println("Arduino on base");
  
   SPI.begin();
   radio.begin();
@@ -55,6 +55,7 @@ void loop(void){
     RF24NetworkHeader header;        // If so, grab it and print it out
     payload_t payload;
     network.read(header,&payload,sizeof(payload));
+    /*
     Serial.print("Received packet. Total people: ");
     Serial.print(payload.totalPeopleInside);
     Serial.print(". People In: ");
@@ -62,6 +63,13 @@ void loop(void){
     Serial.print(". People Out: ");
     Serial.print(payload.peopleOut);
     Serial.println(".");
+    */
+    Serial.print(payload.totalPeopleInside);
+    Serial.print(",");
+    Serial.print(payload.peopleIn);
+    Serial.print(",");
+    Serial.print(payload.peopleOut);
+    Serial.println("");
   }
 }
 
