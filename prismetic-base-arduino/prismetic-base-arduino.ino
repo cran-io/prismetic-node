@@ -64,7 +64,7 @@ void loop(void){
     Serial.print(payload.peopleOut);
     Serial.println(".");
     */
-    Serial.print(payload.totalPeopleInside);
+    Serial.print(header.from_node);
     Serial.print(",");
     Serial.print(payload.peopleIn);
     Serial.print(",");
