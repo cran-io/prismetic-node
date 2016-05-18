@@ -35,8 +35,8 @@ float readingsFloor[SENSORES];
 //Connection variables
 RF24 radio(8, 9);                   // nRF24L01(+) radio attached using Getting Started board
 RF24Network network(radio);          // Network uses that radio
-const uint16_t this_node = 01;        // Address of our node in Octal format
-const uint16_t other_node = 00;       // Address of the other node in Octal format
+const uint16_t this_node = 02;        // Address of our node in Octal format
+const uint16_t base_node = 00;       // Address of the other node in Octal format
 struct payload_t {                  // Structure of our payload
   long totalPeopleInside;
   int peopleIn;
@@ -218,7 +218,7 @@ void loop() {
 
 bool post(){
   //Post to Rx
-  RF24NetworkHeader header(other_node);
+  RF24NetworkHeader header(base_node);
   bool success = network.write(header, &payload, sizeof(payload));
   Serial.print("Sending... ");
   if (success) {
