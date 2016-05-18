@@ -24,7 +24,6 @@ RF24 radio(8,9);                // nRF24L01(+) radio attached using Getting Star
 
 RF24Network network(radio);      // Network uses that radio
 const uint16_t this_node = 00;    // Address of our node in Octal format ( 04,031, etc)
-const uint16_t other_node = 01;   // Address of the other node in Octal format
 
 struct payload_t {                 // Structure of our payload
   long totalPeople;
@@ -36,7 +35,8 @@ struct payload_t {                 // Structure of our payload
 void setup(void)
 {
   Serial.begin(57600);
-  Serial.println("RF24Network/examples/helloworld_rx/");
+  Serial.println("PRISMETIC by CRAN.IO");
+  Serial.println("Arduino on base");
  
   SPI.begin();
   radio.begin();
