@@ -17,7 +17,7 @@ const unsigned int TRIGGER_DELAY_MAX = 5000; //ms
 //Timing variables
 const unsigned int MUESTRAS_PERIOD = 1; //1ms
 unsigned long readTimer = 0;
-const unsigned int POST_PERIOD = 30000;
+const unsigned int POST_PERIOD = 10000;
 const unsigned int POST_RETRY = 5000;
 unsigned long postTimer = 0;
 
@@ -51,6 +51,7 @@ void setup() {
   Serial.print("Starting... ");
   SPI.begin();
   radio.begin();
+  radio.setPALevel(RF24_PA_LOW);
   network.begin(90, this_node);  //crear la network
   payload.totalPeopleInside = EEPROM.read(EEPROMAddress); //inicializar la gente que hay adentro (guardado en EEPROM)
   payload.peopleIn = 0;
