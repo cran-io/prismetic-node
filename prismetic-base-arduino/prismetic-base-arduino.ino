@@ -26,7 +26,7 @@ RF24Network network(radio);      // Network uses that radio
 const uint16_t this_node = 00;    // Address of our node in Octal format ( 04,031, etc)
 
 struct payload_t {                 // Structure of our payload
-  long totalPeople;
+  long totalPeopleInside;
   int peopleIn;
   int peopleOut;
 };
@@ -56,7 +56,7 @@ void loop(void){
     payload_t payload;
     network.read(header,&payload,sizeof(payload));
     Serial.print("Received packet. Total people: ");
-    Serial.print(payload.totalPeople);
+    Serial.print(payload.totalPeopleInside);
     Serial.print(". People In: ");
     Serial.print(payload.peopleIn);
     Serial.print(". People Out: ");
