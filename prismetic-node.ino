@@ -45,10 +45,21 @@ struct payload_t {                  // Structure of our payload
 payload_t payload;
 unsigned char EEPROMAddress = 0;
 
+//Leds
+#define LED_CONN 2 //Pin 2
+#define LED_COUNT 3 //Pin 3
+#define LED_BLINK_PERIOD_ONLINE 2500 //ms
+#define LED_BLINK_PERIOD_OFFLINE 250 //ms
+bool online=false;
+
 void setup() {
   Serial.begin(57600);
   Serial.println("PRISMETIC by CRAN.IO");
   Serial.print("Starting... ");
+  pinMode(LED_COUNT,OUTPUT);
+  pinMode(LED_CONN,OUTPUT);
+  digitalWrite(LED_COUNT,LOW);
+  digitalWrite(LED_CONN,LOW);
   SPI.begin();
   radio.begin();
   radio.setPALevel(RF24_PA_LOW);
@@ -187,17 +198,32 @@ void loop() {
       readIndex = 0;
     }
     readTimer = millis() + MUESTRAS_PERIOD;
+
+    if(ping1SS || ping2SS){
+      digitalWrite(LED_COUNT, HIGH);
+    }
+    else{
+      digitalWrite(LED_COUNT, LOW);
+    }
   }
 
   //Connection update
   network.update();                          // Check the network regularly
 
   if (millis() > postTimer) {
-    bool success = post();
-    if(success)
+    online = post();
+    if(online)
       postTimer = millis() + POST_PERIOD;
     else
       postTimer = millis() + POST_RETRY;
+  }
+
+  unsigned int ledBlinkPeriod = online?LED_BLINK_PERIOD_ONLINE:LED_BLINK_PERIOD_OFFLINE;
+  if((millis()%ledBlinkPeriod)>(ledBlinkPeriod/2)){
+    digitalWrite(LED_CONN, HIGH);
+  }
+  else{
+    digitalWrite(LED_CONN, LOW);
   }
 
   if (Serial.available() > 0) {                       //opciones por serial para resetear o establecer la gente en 5 para pruebas
