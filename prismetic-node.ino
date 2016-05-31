@@ -8,10 +8,10 @@
 const unsigned int SENSORES = 2;
 const unsigned int MUESTRAS = 11;
 const unsigned int MUESTRAS_PROMEDIADAS = 5;
-const float TRIGGER = 50; //Cada unidad son 5mV aprox
-const float HISTERESIS = 20; //Cada unidad son 5mV aprox
-const unsigned int TRIGGER_DUR_MIN = 150; //ms
-const unsigned int TRIGGER_DIFF_MAX = 1500; //ms
+const float TRIGGER = 45; //Cada unidad son 5mV aprox
+const float HISTERESIS = 10; //Cada unidad son 5mV aprox
+const unsigned int TRIGGER_DUR_MIN = 40; //ms
+const unsigned int TRIGGER_DIFF_MAX = 500; //ms
 const unsigned int TRIGGER_DELAY_MAX = 5000; //ms
 
 //Timing variables
