@@ -8,17 +8,17 @@
 const unsigned int SENSORES = 2;
 const unsigned int MUESTRAS = 11;
 const unsigned int MUESTRAS_PROMEDIADAS = 5;
-const float TRIGGER = 60; //Cada unidad son 5mV aprox
+const float TRIGGER = 50; //Cada unidad son 5mV aprox
 const float HISTERESIS = 20; //Cada unidad son 5mV aprox
-const unsigned int TRIGGER_DUR_MIN = 25; //ms
-const unsigned int TRIGGER_DIFF_MAX = 500; //ms
+const unsigned int TRIGGER_DUR_MIN = 150; //ms
+const unsigned int TRIGGER_DIFF_MAX = 1500; //ms
 const unsigned int TRIGGER_DELAY_MAX = 5000; //ms
 
 //Timing variables
 const unsigned int MUESTRAS_PERIOD = 1; //1ms
 unsigned long readTimer = 0;
-const unsigned int POST_PERIOD = 10000;
-const unsigned int POST_RETRY = 5000;
+const unsigned int POST_PERIOD = 500;
+const unsigned int POST_RETRY = 50;
 unsigned long postTimer = 0;
 
 //Sensor variables
@@ -31,6 +31,7 @@ boolean ping1SS = false, ping2SS = false;
 unsigned int readings[SENSORES][MUESTRAS];
 unsigned int readIndex = 0;
 float readingsFloor[SENSORES];
+bool newData=false;
 
 //Connection variables
 RF24 radio(8, 9);                   // nRF24L01(+) radio attached using Getting Started board
@@ -51,6 +52,25 @@ unsigned char EEPROMAddress = 0;
 #define LED_BLINK_PERIOD_ONLINE 2500 //ms
 #define LED_BLINK_PERIOD_OFFLINE 250 //ms
 bool online=false;
+
+void sort(unsigned int a[],int size){
+  for(int i=0; i<(size-1);i++){
+    for (int o=0;o<(size-(i+1));o++){
+      if(a[o]>a[o+1]){
+        int t= a[o];
+        a[o]=a[o+1];
+        a[o+1]=t;
+      }
+    }
+  }
+}
+
+
+double sTocm(unsigned int sensorValue){
+  return ( 10650.08 * pow(sensorValue,-0.935) - 10);
+}
+
+
 
 void setup() {
   Serial.begin(57600);
@@ -74,14 +94,31 @@ void setup() {
   for (int i = 1; i < MUESTRAS; i++){                                 //Init readings
     readings[0][i] = analogRead(A0);
     readings[1][i] = analogRead(A1);
-    delay(10);
+    delay(25);
   }
+
+  Serial.print("Trigger: ");
+  Serial.println(sTocm(TRIGGER));
+  
   for (int i = 1; i < MUESTRAS; i++){                                 //Init floor
     readingsFloor[0] += readings[0][i];
     readingsFloor[1] += readings[1][i];
+   
   }
   readingsFloor[0] /= MUESTRAS;
   readingsFloor[1] /= MUESTRAS;
+
+  readingsFloor[0]=(readingsFloor[0]+readingsFloor[1])/2;
+  readingsFloor[1]=readingsFloor[0];
+  Serial.println("Average floor");
+  Serial.print("Readings Floor 0: ");
+  Serial.println(sTocm(readingsFloor[0]));
+  Serial.print("Readings Floor 1: ");
+  Serial.println(sTocm(readingsFloor[1]));
+  Serial.print("Readings Floor 0: ");
+  Serial.println((readingsFloor[0]));
+  Serial.print("Readings Floor 1: ");
+  Serial.println((readingsFloor[1]));
 }
 
 void loop() {
@@ -164,22 +201,25 @@ void loop() {
       Serial.print(", Duration: ");
       Serial.print(sen2Duration);
       Serial.println(".");
-      if ((abs(sen1Timer - sen2Timer) < TRIGGER_DIFF_MAX) && (sen1Duration > TRIGGER_DUR_MIN) && (sen2Duration > TRIGGER_DUR_MIN)) {
+      if ((abs(sen1Timer - sen2Timer) < TRIGGER_DIFF_MAX) &&( (sen1Duration > TRIGGER_DUR_MIN) || (sen2Duration > TRIGGER_DUR_MIN))) {
         //Si la diferencia entre los sensores es menor que TRIGGER_DIFF_MAX y la duracion de los pulsos es mas que TRIGGER_DUR_MIN
         if ( sen1Timer < sen2Timer){
           payload.peopleIn++ ;
           payload.totalPeopleInside++;
           Serial.print("IN. TOTAL: ");
           Serial.println(payload.totalPeopleInside);
+          newData=true;
         }
         else{
           payload.peopleOut++;
           payload.totalPeopleInside--;
           Serial.print("OUT. TOTAL: ");
           Serial.println(payload.totalPeopleInside);
+          newData=true;
         }
         if(payload.totalPeopleInside > 0)
           EEPROM.write(EEPROMAddress, payload.totalPeopleInside);
+//delay(400);
       }
       sen1Timer = 0;
       sen2Timer = 0;
@@ -210,7 +250,7 @@ void loop() {
   //Connection update
   network.update();                          // Check the network regularly
 
-  if (millis() > postTimer) {
+  if (millis() > postTimer && newData) {
     online = post();
     if(online)
       postTimer = millis() + POST_PERIOD;
@@ -233,7 +273,9 @@ void loop() {
         resetPeople();
         break;
       case 'p':
-        post();
+        if (newData){
+          post();
+        }
         break;
       default:
         Serial.println("No es una instrucción valida");
@@ -248,9 +290,15 @@ bool post(){
   bool success = network.write(header, &payload, sizeof(payload));
   Serial.print("Sending... ");
   if (success) {
+    Serial.println("Payload sent");
+    Serial.print("People in: ");
+    Serial.println(payload.peopleIn);
+    Serial.print("People out: ");
+    Serial.println(payload.peopleOut);
     payload.peopleIn = 0;
     payload.peopleOut = 0;
     Serial.println("post OK.");
+    newData=false;
   }
   else {
     Serial.println("post Failed.");
