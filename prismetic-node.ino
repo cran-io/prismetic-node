@@ -6,11 +6,12 @@
 
 //Sensor pinout
 const unsigned int SENSORES = 2;
-const unsigned int MUESTRAS = 11;
+const unsigned int MUESTRAS = 31;
 const unsigned int MUESTRAS_PROMEDIADAS = 5;
-const float TRIGGER = 45; //Cada unidad son 5mV aprox
-const float HISTERESIS = 10; //Cada unidad son 5mV aprox
-const unsigned int TRIGGER_DUR_MIN = 40; //ms
+const unsigned int RANGE_MASK = 3;
+const float TRIGGER = 60; //Cada unidad son 5mV aprox
+const float HISTERESIS = 20; //Cada unidad son 5mV aprox
+const unsigned int TRIGGER_DUR_MIN = 25; //ms
 const unsigned int TRIGGER_DIFF_MAX = 500; //ms
 const unsigned int TRIGGER_DELAY_MAX = 5000; //ms
 
@@ -29,6 +30,8 @@ boolean ping1SS = false, ping2SS = false;
 
 //Reading variables
 unsigned int readings[SENSORES][MUESTRAS];
+unsigned int timeStamps[SENSORES][MUESTRAS];
+unsigned int minSample[SENSORES];
 unsigned int readIndex = 0;
 float readingsFloor[SENSORES];
 bool newData=false;
@@ -52,6 +55,29 @@ unsigned char EEPROMAddress = 0;
 #define LED_BLINK_PERIOD_ONLINE 2500 //ms
 #define LED_BLINK_PERIOD_OFFLINE 250 //ms
 bool online=false;
+
+
+//Max filter (colo)
+enum{OUTCURVE,MEASURING};
+enum{OUTCURVE2,MEASURING2};
+int mstatus=OUTCURVE;
+int mstatus2=OUTCURVE2;
+double sensorDistance=0.045;
+const unsigned int MUESTRAS_MAX_F=1;
+const unsigned int SAMPLE_TIME = 2;
+const double MAXMEASURE=150;
+const double TRIGGER_MAX_F=80;
+const unsigned int NSENSORS=2;
+double prom=0;
+unsigned int counter=0;
+
+unsigned int sensordata[NSENSORS][MUESTRAS];
+unsigned int dataFilter[NSENSORS];
+double minSensor[NSENSORS];
+double lastMinStamp[NSENSORS];
+double newspeed=0;
+
+
 
 void sort(unsigned int a[],int size){
   for(int i=0; i<(size-1);i++){
@@ -94,19 +120,31 @@ void setup() {
   for (int i = 1; i < MUESTRAS; i++){                                 //Init readings
     readings[0][i] = analogRead(A0);
     readings[1][i] = analogRead(A1);
-    delay(25);
+    Serial.print("Reading 0: ");
+    Serial.println(sTocm(readings[0][i]));
+    Serial.print("Reading 1: ");
+    Serial.println(sTocm(readings[1][i]));
+    delay(100);
   }
+
+  sort(readings[0],MUESTRAS);
+  sort(readings[1],MUESTRAS);
 
   Serial.print("Trigger: ");
   Serial.println(sTocm(TRIGGER));
   
-  for (int i = 1; i < MUESTRAS; i++){                                 //Init floor
+  for (int i = 1+RANGE_MASK; i < MUESTRAS-RANGE_MASK; i++){                                 //Init floor
     readingsFloor[0] += readings[0][i];
     readingsFloor[1] += readings[1][i];
+    
+    Serial.print("Order Reading 0: ");
+    Serial.println(sTocm(readings[0][i]));
+    Serial.print("Order Reading 1: ");
+    Serial.println(sTocm(readings[1][i]));
    
   }
-  readingsFloor[0] /= MUESTRAS;
-  readingsFloor[1] /= MUESTRAS;
+  readingsFloor[0] /= MUESTRAS-RANGE_MASK*2;
+  readingsFloor[1] /= MUESTRAS-RANGE_MASK*2;
 
   readingsFloor[0]=(readingsFloor[0]+readingsFloor[1])/2;
   readingsFloor[1]=readingsFloor[0];
@@ -121,26 +159,104 @@ void setup() {
   Serial.println((readingsFloor[1]));
 }
 
+
+void updateSensors(unsigned int datain0, unsigned int datain1){
+    
+  dataFilter[0]=(int)sTocm(datain0);
+  dataFilter[1]=(int)sTocm(datain1);
+  
+}
+
+
+void getSpeed(){
+  
+  newspeed=sensorDistance/((lastMinStamp[1]-lastMinStamp[0])/1000);
+
+  if (mstatus==OUTCURVE && dataFilter[0]<TRIGGER_MAX_F){
+      mstatus=MEASURING;
+      
+      minSensor[0]=MAXMEASURE;
+  }
+
+  if(mstatus==MEASURING && dataFilter[0]>=TRIGGER_MAX_F){
+    mstatus=OUTCURVE;
+    if (newspeed<3&&newspeed>-3 &&newspeed!=0){
+      Serial.print("Velocidad(m/s): ");
+      Serial.println(newspeed);
+    }
+    
+  }
+  
+  if (mstatus==MEASURING){
+    if (minSensor[0]>dataFilter[0]){
+      minSensor[0]=dataFilter[0];
+      lastMinStamp[0]=millis();      
+    }  
+  }
+
+
+////////////////
+
+
+  if (mstatus2==OUTCURVE2 && dataFilter[1]<TRIGGER_MAX_F){
+      mstatus2=MEASURING2;
+      minSensor[1]=MAXMEASURE;
+  }
+
+  if(mstatus2==MEASURING2 && dataFilter[1]>=TRIGGER_MAX_F){
+    mstatus2=OUTCURVE2;
+      
+    if (newspeed<3&&newspeed>-3 &&newspeed!=0){
+      Serial.print("Velocidad(m/s): ");
+      Serial.println(newspeed);
+    }
+  }
+  
+  if (mstatus2==MEASURING2){
+    if (minSensor[1]>dataFilter[1]){
+      minSensor[1]=dataFilter[1];
+      lastMinStamp[1]=millis();
+
+    }  
+  }
+
+
+
+  
+}
+
+
+
+
 void loop() {
   if (millis() > readTimer) {                                   //Adquisicion de datos cada 1ms, 11 muestras de cada sensor son 11ms, se ordenan de mayor a menor y se promedian las 5 del medio
     readings[0][readIndex] = analogRead(A0);
     readings[1][readIndex] = analogRead(A1);
     
     int i, j;
-    unsigned int ordered[SENSORES][MUESTRAS];
-    for (i = 1; i < MUESTRAS; i++)
-      ordered[0][i] = readings[0][i];
-    for (i = 1; i < MUESTRAS; i++)
-      ordered[1][i] = readings[1][i];
+
     
-    for (i = 1; i < MUESTRAS; i++) {                                //Ordeno el primer sensor de menor a mayor
+    unsigned int ordered[SENSORES][MUESTRAS];
+    for (i = 1; i < MUESTRAS; i++){
+      
+      ordered[0][i] = readings[0][i];
+    }
+    
+    for (i = 1; i < MUESTRAS; i++){
+      
+      ordered[1][i] = readings[1][i];
+    }
+
+
+    
+    for (i = 1; i < MUESTRAS; i++) {                                //Ordeno el primer sensor de menor a mayor y tomo el maximo
       unsigned int tmp = ordered[0][i];
       for (j = i; j >= 1 && tmp < ordered[0][j - 1]; j--)
         ordered[0][j] = ordered[0][j - 1];
       ordered[0][j] = tmp;
     }
 
-    for (i = 1; i < MUESTRAS; i++) {                                //Ordeno el segundo sensor de menor a mayor
+    for (i = 1; i < MUESTRAS; i++) {                                //Ordeno el segundo sensor de menor a mayor y tomo el maximo
       unsigned int tmp = ordered[1][i];
       for (j = i; j >= 1 && tmp < ordered[1][j - 1]; j--)
         ordered[1][j] = ordered[1][j - 1];
@@ -155,6 +271,9 @@ void loop() {
     sen1ahora /= (MUESTRAS_PROMEDIADAS);
     sen2ahora /=  (MUESTRAS_PROMEDIADAS);
 
+    updateSensors(sen1ahora,sen2ahora);
+    getSpeed();
+  
     //Serial.println(sen2ahora);
 
     if (ping1SS == false) {
@@ -201,13 +320,19 @@ void loop() {
       Serial.print(", Duration: ");
       Serial.print(sen2Duration);
       Serial.println(".");
+      Serial.print("IN. TOTAL: ");
+      Serial.println(payload.totalPeopleInside);
+
+      Serial.print("Speed: ");
+      Serial.println(newspeed);
+
       if ((abs(sen1Timer - sen2Timer) < TRIGGER_DIFF_MAX) &&( (sen1Duration > TRIGGER_DUR_MIN) || (sen2Duration > TRIGGER_DUR_MIN))) {
         //Si la diferencia entre los sensores es menor que TRIGGER_DIFF_MAX y la duracion de los pulsos es mas que TRIGGER_DUR_MIN
-        if ( sen1Timer < sen2Timer){
+        if (newspeed>0){
+        //if ( sen1Timer < sen2Timer){
           payload.peopleIn++ ;
           payload.totalPeopleInside++;
-          Serial.print("IN. TOTAL: ");
-          Serial.println(payload.totalPeopleInside);
+          
           newData=true;
         }
         else{
