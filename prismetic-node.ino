@@ -71,12 +71,23 @@ const unsigned int NSENSORS=2;
 double prom=0;
 unsigned int counter=0;
 
+const double TRIGGER_MAX=10;
+const double TRIGGER_MIN=-10;
+
 unsigned int sensordata[NSENSORS][MUESTRAS];
 unsigned int dataFilter[NSENSORS];
-double minSensor[NSENSORS];
-double lastMinStamp[NSENSORS];
+double curve_Peak[NSENSORS];
+double peak_Stamp[NSENSORS];
 double newspeed=0;
 
+#define filterSamples   13
+int sensSmoothArray1 [filterSamples];
+int smoothData1;
+
+int sensSmoothArray2 [filterSamples];
+int smoothData2;
+
+int restaCurvas;
 
 
 void sort(unsigned int a[],int size){
@@ -96,6 +107,7 @@ double sTocm(unsigned int sensorValue){
   return ( 10650.08 * pow(sensorValue,-0.935) - 10);
 }
 
+enum{MAX,MIN};
 
 
 void setup() {
@@ -160,37 +172,50 @@ void setup() {
 }
 
 
-void updateSensors(unsigned int datain0, unsigned int datain1){
-    
-  dataFilter[0]=(int)sTocm(datain0);
-  dataFilter[1]=(int)sTocm(datain1);
-  
-}
 
 
 void getSpeed(){
   
-  newspeed=sensorDistance/((lastMinStamp[1]-lastMinStamp[0])/1000);
 
-  if (mstatus==OUTCURVE && dataFilter[0]<TRIGGER_MAX_F){
+if (smoothData1>MAXMEASURE){
+    smoothData1=MAXMEASURE;
+  }
+  if (smoothData2>MAXMEASURE){
+    smoothData2=MAXMEASURE;
+  }
+ // Serial.println(smoothData1);
+ // Serial.println(smoothData2);
+
+  restaCurvas=smoothData1-smoothData2;
+ // Serial.println(restaCurvas);
+  
+/*
+  Serial.print("Data sensor 0: ");
+  Serial.println(dataFilter[0]);
+  
+  Serial.print("Data sensor 1: ");
+  Serial.println(dataFilter[1]);*/
+
+  if (mstatus==OUTCURVE && restaCurvas<TRIGGER_MIN){
       mstatus=MEASURING;
       
-      minSensor[0]=MAXMEASURE;
+      curve_Peak[MIN]=restaCurvas;
   }
 
-  if(mstatus==MEASURING && dataFilter[0]>=TRIGGER_MAX_F){
+  if(mstatus==MEASURING && restaCurvas==0){
+
     mstatus=OUTCURVE;
-    if (newspeed<3&&newspeed>-3 &&newspeed!=0){
-      Serial.print("Velocidad(m/s): ");
-      Serial.println(newspeed);
-    }
-    
   }
   
   if (mstatus==MEASURING){
-    if (minSensor[0]>dataFilter[0]){
-      minSensor[0]=dataFilter[0];
-      lastMinStamp[0]=millis();      
+    if (curve_Peak[MIN]>restaCurvas){
+      curve_Peak[MIN]=restaCurvas;
+      peak_Stamp[MIN]=millis();
+      Serial.print("Curve Peak min: ");
+      Serial.println(curve_Peak[MIN]);
+      Serial.print("timestamp min: ");
+      Serial.println(peak_Stamp[MIN]);
+      
     }  
   }
 
@@ -198,34 +223,95 @@ void getSpeed(){
 ////////////////
 
 
-  if (mstatus2==OUTCURVE2 && dataFilter[1]<TRIGGER_MAX_F){
+  if (mstatus2==OUTCURVE2 && restaCurvas>TRIGGER_MAX){
       mstatus2=MEASURING2;
-      minSensor[1]=MAXMEASURE;
+      /*Serial.print("Entro al status MEASURING, DATA FILTER VALUE: ");
+      Serial.println(dataFilter[1]);*/
+      curve_Peak[MAX]=restaCurvas;
   }
 
-  if(mstatus2==MEASURING2 && dataFilter[1]>=TRIGGER_MAX_F){
+  if(mstatus2==MEASURING2 && restaCurvas==0){
+    /*Serial.print("Salgo del status MEASURING, DATA FILTER VALUE: ");
+      Serial.println(dataFilter[1]);*/
+
     mstatus2=OUTCURVE2;
-      
-    if (newspeed<3&&newspeed>-3 &&newspeed!=0){
-      Serial.print("Velocidad(m/s): ");
-      Serial.println(newspeed);
-    }
+
   }
   
   if (mstatus2==MEASURING2){
-    if (minSensor[1]>dataFilter[1]){
-      minSensor[1]=dataFilter[1];
-      lastMinStamp[1]=millis();
+    if (curve_Peak[MAX]<restaCurvas){
+      curve_Peak[MAX]=restaCurvas;
+      peak_Stamp[MAX]=millis();
+      Serial.print("Curve Peak max: ");
+      Serial.println(curve_Peak[MAX]);
+      Serial.print("timestamp max: ");
+      Serial.println(peak_Stamp[MAX]);
 
     }  
   }
 
+  newspeed=sensorDistance/((peak_Stamp[1]-peak_Stamp[0])/1000);
 
 
   
 }
 
 
+int digitalSmooth(int rawIn, int *sensSmoothArray){     // "int *sensSmoothArray" passes an array to the function - the asterisk indicates the array name is a pointer
+  int j, k, temp, top, bottom;
+  long total;
+  static int i;
+ // static int raw[filterSamples];
+  static int sorted[filterSamples];
+  boolean done;
+
+  i = (i + 1) % filterSamples;    // increment counter and roll over if necc. -  % (modulo operator) rolls over variable
+  sensSmoothArray[i] = rawIn;                 // input new data into the oldest slot
+
+  // Serial.print("raw = ");
+
+  for (j=0; j<filterSamples; j++){     // transfer data array into anther array for sorting and averaging
+    sorted[j] = sensSmoothArray[j];
+  }
+
+  done = 0;                // flag to know when we're done sorting              
+  while(done != 1){        // simple swap sort, sorts numbers from lowest to highest
+    done = 1;
+    for (j = 0; j < (filterSamples - 1); j++){
+      if (sorted[j] > sorted[j + 1]){     // numbers are out of order - swap
+        temp = sorted[j + 1];
+        sorted [j+1] =  sorted[j] ;
+        sorted [j] = temp;
+        done = 0;
+      }
+    }
+  }
+
+/*
+  for (j = 0; j < (filterSamples); j++){    // print the array to debug
+    Serial.print(sorted[j]); 
+    Serial.print("   "); 
+  }
+  Serial.println();
+*/
+
+  // throw out top and bottom 15% of samples - limit to throw out at least one from top and bottom
+  bottom = max(((filterSamples * 15)  / 100), 1); 
+  top = min((((filterSamples * 85) / 100) + 1  ), (filterSamples - 1));   // the + 1 is to make up for asymmetry caused by integer rounding
+  k = 0;
+  total = 0;
+  for ( j = bottom; j< top; j++){
+    total += sorted[j];  // total remaining indices
+    k++; 
+    // Serial.print(sorted[j]); 
+    // Serial.print("   "); 
+  }
+
+//  Serial.println();
+//  Serial.print("average = ");
+//  Serial.println(total/k);
+  return total / k;    // divide by number of samples
+}
 
 
 void loop() {
@@ -271,7 +357,11 @@ void loop() {
     sen1ahora /= (MUESTRAS_PROMEDIADAS);
     sen2ahora /=  (MUESTRAS_PROMEDIADAS);
 
-    updateSensors(sen1ahora,sen2ahora);
+    //updateSensors(sen1ahora,sen2ahora);
+
+    dataFilter[0] = digitalSmooth(dataFilter[0], sensSmoothArray1);
+    dataFilter[1] = digitalSmooth(dataFilter[1], sensSmoothArray2);
+    
     getSpeed();
   
     //Serial.println(sen2ahora);
@@ -328,8 +418,8 @@ void loop() {
 
       if ((abs(sen1Timer - sen2Timer) < TRIGGER_DIFF_MAX) &&( (sen1Duration > TRIGGER_DUR_MIN) || (sen2Duration > TRIGGER_DUR_MIN))) {
         //Si la diferencia entre los sensores es menor que TRIGGER_DIFF_MAX y la duracion de los pulsos es mas que TRIGGER_DUR_MIN
-        if (newspeed>0){
-        //if ( sen1Timer < sen2Timer){
+        //if (newspeed>0){
+        if ( sen1Timer < sen2Timer){
           payload.peopleIn++ ;
           payload.totalPeopleInside++;
           
