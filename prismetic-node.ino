@@ -67,19 +67,21 @@ int mstatus=OUTCURVE;
 double sensorDistance=0.045;
 const double MAX_MEASURE=150;
 const unsigned int NSENSORS=2;
-const double TRIGGER_PEAK=8;
-const unsigned int MAX_PEAK_DIF=2000;
+const double TRIGGER_PEAK=5;
+const unsigned int MAX_PEAK_DIF=800;
 
 double curve_Peak[NSENSORS];
 unsigned int peak_Stamp[NSENSORS];
 unsigned int reading_Stamp=0;
 int lastTime_dif=0;
+int lastMeasure=0;
 
 double newspeed=0;
 
 #define filterSamples   20
 int sensSmoothArray1 [filterSamples];
 int smoothData1;
+const unsigned int TIME_INTERPEOPLE =1000;
 
 int sensSmoothArray2 [filterSamples];
 int smoothData2;
@@ -127,10 +129,10 @@ void setup() {
   for (int i = 1; i < MUESTRAS; i++){                                 //Init readings
     readings[0][i] = analogRead(A0);
     readings[1][i] = analogRead(A1);
-    Serial.print("Reading 0: ");
+  /*  Serial.print("Reading 0: ");
     Serial.println(sTocm(readings[0][i]));
     Serial.print("Reading 1: ");
-    Serial.println(sTocm(readings[1][i]));
+    Serial.println(sTocm(readings[1][i]));*/
     delay(100);
   }
 
@@ -184,10 +186,13 @@ int get_Peak_dif(void){
 
 void updatePeaks(){
   restaCurvas=dis1ahora-dis2ahora;
+  if (restaCurvas>99){
+    restaCurvas=0;
+  }
 
 
-  if (mstatus == OUTCURVE && (restaCurvas   > TRIGGER_PEAK || restaCurvas < -TRIGGER_PEAK)){
-    //Serial.println("Estamos dentro del rango de medicion");
+  if (mstatus == OUTCURVE && (restaCurvas   > TRIGGER_PEAK || restaCurvas < -TRIGGER_PEAK) && millis()-lastMeasure>TIME_INTERPEOPLE){
+    Serial.println("Estamos dentro del rango de medicion");
     mstatus=READING;
     reading_Stamp=millis();
     curve_Peak[MIN]=0;
@@ -195,23 +200,24 @@ void updatePeaks(){
     set_Peak_Dif(0);
   }
     unsigned int realtime=millis();
-
+  /*Serial.println(restaCurvas);
+  Serial.println(realtime);*/
   if (mstatus==READING && (realtime-reading_Stamp)<MAX_PEAK_DIF){
-     if ((restaCurvas < -TRIGGER_PEAK) ||  (restaCurvas > TRIGGER_PEAK)){ 
-       // Serial.println(restaCurvas);
-       // Serial.println(realtime);
-     }
+     /*if ((restaCurvas < -TRIGGER_PEAK) ||  (restaCurvas > TRIGGER_PEAK)){ 
+        Serial.println(restaCurvas);
+        Serial.println(realtime);
+     }*/
     if (curve_Peak[MIN]>restaCurvas && restaCurvas < -TRIGGER_PEAK){
       curve_Peak[MIN] = restaCurvas;
       peak_Stamp[MIN] = millis();    
-      //Serial.print("Midiendo minimo: ");  
-      //Serial.println(curve_Peak[MIN]);
+     // Serial.print("Midiendo minimo: ");  
+     // Serial.println(curve_Peak[MIN]);
     }
     if (curve_Peak[MAX] < restaCurvas && restaCurvas > TRIGGER_PEAK){
       curve_Peak[MAX] = restaCurvas;
       peak_Stamp[MAX] = millis();     
-      //Serial.print("Midiendo maximo: ");  
-      //Serial.println(curve_Peak[MAX]); 
+     // Serial.print("Midiendo maximo: ");  
+     // Serial.println(curve_Peak[MAX]); 
     }
   }
 
@@ -220,13 +226,14 @@ void updatePeaks(){
     curve_Peak[MIN]=0;
     curve_Peak[MAX]=0;
     Serial.println("Medicion completa");
+    lastMeasure=millis();
     set_Peak_Dif(peak_Stamp[MAX]-peak_Stamp[MIN]);
     countPeople();
   }
 
   if (mstatus ==READING &&( (realtime-reading_Stamp) > MAX_PEAK_DIF)){    
     mstatus=OUTCURVE;
-    Serial.println("Demasiado tiempo entre picos, probable error");
+  //  Serial.println("Demasiado tiempo entre picos, probable error");
     reading_Stamp=millis();
     curve_Peak[MIN]=0;
     curve_Peak[MAX]=0;
@@ -453,6 +460,6 @@ void resetPeople(){
   payload.peopleIn = 0;
   payload.peopleOut = 0;
   EEPROM.write(EEPROMAddress, payload.totalPeopleInside);
-  Serial.println("RESET PEOPLE TO 0");
+ // Serial.println("RESET PEOPLE TO 0");
 }
 
