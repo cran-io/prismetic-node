@@ -1,3 +1,4 @@
+
 //Connection
 #include <RF24Network.h>
 #include <RF24.h>
@@ -58,29 +59,25 @@ bool online=false;
 
 
 //Max filter (colo)
-enum{OUTCURVE,MEASURING};
-enum{OUTCURVE2,MEASURING2};
+enum {MAX,MIN};
+double dis1ahora;
+double dis2ahora;
+enum{OUTCURVE,READING};
 int mstatus=OUTCURVE;
-int mstatus2=OUTCURVE2;
 double sensorDistance=0.045;
-const unsigned int MUESTRAS_MAX_F=1;
-const unsigned int SAMPLE_TIME = 2;
-const double MAXMEASURE=150;
-const double TRIGGER_MAX_F=80;
+const double MAX_MEASURE=150;
 const unsigned int NSENSORS=2;
-double prom=0;
-unsigned int counter=0;
+const double TRIGGER_PEAK=8;
+const unsigned int MAX_PEAK_DIF=2000;
 
-const double TRIGGER_MAX=10;
-const double TRIGGER_MIN=-10;
-
-unsigned int sensordata[NSENSORS][MUESTRAS];
-unsigned int dataFilter[NSENSORS];
 double curve_Peak[NSENSORS];
-double peak_Stamp[NSENSORS];
+unsigned int peak_Stamp[NSENSORS];
+unsigned int reading_Stamp=0;
+int lastTime_dif=0;
+
 double newspeed=0;
 
-#define filterSamples   13
+#define filterSamples   20
 int sensSmoothArray1 [filterSamples];
 int smoothData1;
 
@@ -107,13 +104,11 @@ double sTocm(unsigned int sensorValue){
   return ( 10650.08 * pow(sensorValue,-0.935) - 10);
 }
 
-enum{MAX,MIN};
-
 
 void setup() {
   Serial.begin(57600);
-  Serial.println("PRISMETIC by CRAN.IO");
-  Serial.print("Starting... ");
+  //Serial.println("PRISMETIC by CRAN.IO");
+  //Serial.print("Starting... ");
   pinMode(LED_COUNT,OUTPUT);
   pinMode(LED_CONN,OUTPUT);
   digitalWrite(LED_COUNT,LOW);
@@ -126,8 +121,8 @@ void setup() {
   payload.totalPeopleInside = EEPROM.read(EEPROMAddress); //inicializar la gente que hay adentro (guardado en EEPROM)
   payload.peopleIn = 0;
   payload.peopleOut = 0;
-  Serial.print("TOTAL: ");
-  Serial.println(payload.totalPeopleInside);
+  //Serial.print("TOTAL: ");
+  //Serial.println(payload.totalPeopleInside);
   delay(60);                                                          //Warm-up del sensor
   for (int i = 1; i < MUESTRAS; i++){                                 //Init readings
     readings[0][i] = analogRead(A0);
@@ -142,17 +137,17 @@ void setup() {
   sort(readings[0],MUESTRAS);
   sort(readings[1],MUESTRAS);
 
-  Serial.print("Trigger: ");
-  Serial.println(sTocm(TRIGGER));
+  //Serial.print("Trigger: ");
+  //Serial.println(sTocm(TRIGGER));
   
   for (int i = 1+RANGE_MASK; i < MUESTRAS-RANGE_MASK; i++){                                 //Init floor
     readingsFloor[0] += readings[0][i];
     readingsFloor[1] += readings[1][i];
     
-    Serial.print("Order Reading 0: ");
-    Serial.println(sTocm(readings[0][i]));
-    Serial.print("Order Reading 1: ");
-    Serial.println(sTocm(readings[1][i]));
+    //Serial.print("Order Reading 0: ");
+    //Serial.println(sTocm(readings[0][i]));
+    //Serial.print("Order Reading 1: ");
+    //Serial.println(sTocm(readings[1][i]));
    
   }
   readingsFloor[0] /= MUESTRAS-RANGE_MASK*2;
@@ -165,94 +160,80 @@ void setup() {
   Serial.println(sTocm(readingsFloor[0]));
   Serial.print("Readings Floor 1: ");
   Serial.println(sTocm(readingsFloor[1]));
-  Serial.print("Readings Floor 0: ");
-  Serial.println((readingsFloor[0]));
-  Serial.print("Readings Floor 1: ");
-  Serial.println((readingsFloor[1]));
+  //Serial.print("Readings Floor 0: ");
+  //Serial.println((readingsFloor[0]));
+  //Serial.print("Readings Floor 1: ");
+  //Serial.println((readingsFloor[1]));
+  Serial.println("-------------------------------");
+  Serial.println("-------------------------------");
+  Serial.println("Node ready");
+  Serial.println("-------------------------------");
+  Serial.println("-------------------------------");
 }
 
 
 
 
-void getSpeed(){
-  
+void set_Peak_Dif(int diference){
+  lastTime_dif=diference;
+}
 
-if (smoothData1>MAXMEASURE){
-    smoothData1=MAXMEASURE;
+int get_Peak_dif(void){
+  return(lastTime_dif);
+}
+
+void updatePeaks(){
+  restaCurvas=dis1ahora-dis2ahora;
+
+
+  if (mstatus == OUTCURVE && (restaCurvas   > TRIGGER_PEAK || restaCurvas < -TRIGGER_PEAK)){
+    //Serial.println("Estamos dentro del rango de medicion");
+    mstatus=READING;
+    reading_Stamp=millis();
+    curve_Peak[MIN]=0;
+    curve_Peak[MAX]=0;
+    set_Peak_Dif(0);
   }
-  if (smoothData2>MAXMEASURE){
-    smoothData2=MAXMEASURE;
+    unsigned int realtime=millis();
+
+  if (mstatus==READING && (realtime-reading_Stamp)<MAX_PEAK_DIF){
+     if ((restaCurvas < -TRIGGER_PEAK) ||  (restaCurvas > TRIGGER_PEAK)){ 
+       // Serial.println(restaCurvas);
+       // Serial.println(realtime);
+     }
+    if (curve_Peak[MIN]>restaCurvas && restaCurvas < -TRIGGER_PEAK){
+      curve_Peak[MIN] = restaCurvas;
+      peak_Stamp[MIN] = millis();    
+      //Serial.print("Midiendo minimo: ");  
+      //Serial.println(curve_Peak[MIN]);
+    }
+    if (curve_Peak[MAX] < restaCurvas && restaCurvas > TRIGGER_PEAK){
+      curve_Peak[MAX] = restaCurvas;
+      peak_Stamp[MAX] = millis();     
+      //Serial.print("Midiendo maximo: ");  
+      //Serial.println(curve_Peak[MAX]); 
+    }
   }
- // Serial.println(smoothData1);
- // Serial.println(smoothData2);
 
-  restaCurvas=smoothData1-smoothData2;
- // Serial.println(restaCurvas);
-  
-/*
-  Serial.print("Data sensor 0: ");
-  Serial.println(dataFilter[0]);
-  
-  Serial.print("Data sensor 1: ");
-  Serial.println(dataFilter[1]);*/
-
-  if (mstatus==OUTCURVE && restaCurvas<TRIGGER_MIN){
-      mstatus=MEASURING;
-      
-      curve_Peak[MIN]=restaCurvas;
-  }
-
-  if(mstatus==MEASURING && restaCurvas==0){
-
+  if (mstatus==READING && (restaCurvas < TRIGGER_PEAK && restaCurvas > -TRIGGER_PEAK) && curve_Peak[MIN] !=0 && curve_Peak[MAX]!=0){
     mstatus=OUTCURVE;
-  }
-  
-  if (mstatus==MEASURING){
-    if (curve_Peak[MIN]>restaCurvas){
-      curve_Peak[MIN]=restaCurvas;
-      peak_Stamp[MIN]=millis();
-      Serial.print("Curve Peak min: ");
-      Serial.println(curve_Peak[MIN]);
-      Serial.print("timestamp min: ");
-      Serial.println(peak_Stamp[MIN]);
-      
-    }  
+    curve_Peak[MIN]=0;
+    curve_Peak[MAX]=0;
+    Serial.println("Medicion completa");
+    set_Peak_Dif(peak_Stamp[MAX]-peak_Stamp[MIN]);
+    countPeople();
   }
 
-
-////////////////
-
-
-  if (mstatus2==OUTCURVE2 && restaCurvas>TRIGGER_MAX){
-      mstatus2=MEASURING2;
-      /*Serial.print("Entro al status MEASURING, DATA FILTER VALUE: ");
-      Serial.println(dataFilter[1]);*/
-      curve_Peak[MAX]=restaCurvas;
+  if (mstatus ==READING &&( (realtime-reading_Stamp) > MAX_PEAK_DIF)){    
+    mstatus=OUTCURVE;
+    Serial.println("Demasiado tiempo entre picos, probable error");
+    reading_Stamp=millis();
+    curve_Peak[MIN]=0;
+    curve_Peak[MAX]=0;
+    peak_Stamp[MIN]=0;
+    peak_Stamp[MAX]=0;
+    set_Peak_Dif(0);
   }
-
-  if(mstatus2==MEASURING2 && restaCurvas==0){
-    /*Serial.print("Salgo del status MEASURING, DATA FILTER VALUE: ");
-      Serial.println(dataFilter[1]);*/
-
-    mstatus2=OUTCURVE2;
-
-  }
-  
-  if (mstatus2==MEASURING2){
-    if (curve_Peak[MAX]<restaCurvas){
-      curve_Peak[MAX]=restaCurvas;
-      peak_Stamp[MAX]=millis();
-      Serial.print("Curve Peak max: ");
-      Serial.println(curve_Peak[MAX]);
-      Serial.print("timestamp max: ");
-      Serial.println(peak_Stamp[MAX]);
-
-    }  
-  }
-
-  newspeed=sensorDistance/((peak_Stamp[1]-peak_Stamp[0])/1000);
-
-
   
 }
 
@@ -268,7 +249,7 @@ int digitalSmooth(int rawIn, int *sensSmoothArray){     // "int *sensSmoothArray
   i = (i + 1) % filterSamples;    // increment counter and roll over if necc. -  % (modulo operator) rolls over variable
   sensSmoothArray[i] = rawIn;                 // input new data into the oldest slot
 
-  // Serial.print("raw = ");
+  // //Serial.print("raw = ");
 
   for (j=0; j<filterSamples; j++){     // transfer data array into anther array for sorting and averaging
     sorted[j] = sensSmoothArray[j];
@@ -287,14 +268,6 @@ int digitalSmooth(int rawIn, int *sensSmoothArray){     // "int *sensSmoothArray
     }
   }
 
-/*
-  for (j = 0; j < (filterSamples); j++){    // print the array to debug
-    Serial.print(sorted[j]); 
-    Serial.print("   "); 
-  }
-  Serial.println();
-*/
-
   // throw out top and bottom 15% of samples - limit to throw out at least one from top and bottom
   bottom = max(((filterSamples * 15)  / 100), 1); 
   top = min((((filterSamples * 85) / 100) + 1  ), (filterSamples - 1));   // the + 1 is to make up for asymmetry caused by integer rounding
@@ -303,15 +276,37 @@ int digitalSmooth(int rawIn, int *sensSmoothArray){     // "int *sensSmoothArray
   for ( j = bottom; j< top; j++){
     total += sorted[j];  // total remaining indices
     k++; 
-    // Serial.print(sorted[j]); 
-    // Serial.print("   "); 
+    // //Serial.print(sorted[j]); 
+    // //Serial.print("   "); 
   }
 
-//  Serial.println();
-//  Serial.print("average = ");
-//  Serial.println(total/k);
+
   return total / k;    // divide by number of samples
 }
+
+void countPeople(){
+
+        if ( get_Peak_dif()>0){
+          payload.peopleIn++ ;
+          payload.totalPeopleInside++;
+          
+          newData=true;
+        }
+        else{
+          payload.peopleOut++;
+          payload.totalPeopleInside--;
+          newData=true;
+        }
+        if(payload.totalPeopleInside > 0)
+          EEPROM.write(EEPROMAddress, payload.totalPeopleInside);
+      sen1Timer = 0;
+      sen2Timer = 0;
+      sen1Duration = 0;
+      sen2Duration = 0;
+      Serial.print("Person speed: ");
+      Serial.println(sensorDistance*10000/get_Peak_dif());
+}
+
 
 
 void loop() {
@@ -357,90 +352,22 @@ void loop() {
     sen1ahora /= (MUESTRAS_PROMEDIADAS);
     sen2ahora /=  (MUESTRAS_PROMEDIADAS);
 
-    //updateSensors(sen1ahora,sen2ahora);
-
-    dataFilter[0] = digitalSmooth(dataFilter[0], sensSmoothArray1);
-    dataFilter[1] = digitalSmooth(dataFilter[1], sensSmoothArray2);
+    dis1ahora=sTocm(sen1ahora);
+    dis2ahora=sTocm(sen2ahora);
     
-    getSpeed();
-  
-    //Serial.println(sen2ahora);
-
-    if (ping1SS == false) {
-      if (sen1Timer > 0) {
-        if ((millis() - sen1Timer) > TRIGGER_DELAY_MAX) { //Si paso mas de TRIGGER_DELAY_MAX mato este sensor
-          sen1Timer = 0;
-        }
-      }
-      else if ((sen1ahora > (readingsFloor[0] + TRIGGER)) && (sen1antes > (readingsFloor[0] + TRIGGER))) { //DETECCION DEL SENSOR 1
-        ping1SS = true;
-        sen1Timer = millis();
-        sen1Duration = 0;
-      }
+    if (dis1ahora>MAX_MEASURE){
+      dis1ahora=MAX_MEASURE;
     }
-    else if ((sen1antes < (readingsFloor[0] + TRIGGER - HISTERESIS)) && (sen1ahora < (readingsFloor[0] + TRIGGER - HISTERESIS))) { //BAJA DEL SENSOR 1
-      ping1SS = false;
-      sen1Duration = millis() - sen1Timer; //Duracion del pulso 1
+    if (dis2ahora>MAX_MEASURE){
+      dis2ahora=MAX_MEASURE;
     }
+    
 
-    if (ping2SS == false) {
-      if (sen2Timer > 0) {
-        if ((millis() - sen2Timer) > TRIGGER_DELAY_MAX) { //Si paso mas de TRIGGER_DELAY_MAX mato este sensor
-          sen2Timer = 0;
-        }
-      }
-      else if ((sen2ahora > (readingsFloor[1] + TRIGGER)) && (sen2antes > (readingsFloor[1] + TRIGGER))) { //DETECCION DEL SENSOR 2
-        ping2SS = true;
-        sen2Timer = millis();
-      }
-    }
-    else if ((sen2antes < (readingsFloor[1] + TRIGGER - HISTERESIS)) && (sen2ahora < (readingsFloor[1] + TRIGGER - HISTERESIS))) { //BAJA DEL SENSOR 2
-      ping2SS = false;
-      sen2Duration = millis() - sen2Timer; //Duracion del pulso 2
-    }
-
-    if ((ping1SS == false ) && (ping2SS == false) && (sen1Timer > 0) && (sen2Timer > 0)) { //Si ya bajaron los sensores
-      Serial.print("Sensor 1 - Timer:");
-      Serial.print(sen1Timer);
-      Serial.print(", Duration: ");
-      Serial.print(sen1Duration);
-      Serial.println(".");
-      Serial.print("Sensor 2 - Timer: ");
-      Serial.print(sen2Timer);
-      Serial.print(", Duration: ");
-      Serial.print(sen2Duration);
-      Serial.println(".");
-      Serial.print("IN. TOTAL: ");
-      Serial.println(payload.totalPeopleInside);
-
-      Serial.print("Speed: ");
-      Serial.println(newspeed);
-
-      if ((abs(sen1Timer - sen2Timer) < TRIGGER_DIFF_MAX) &&( (sen1Duration > TRIGGER_DUR_MIN) || (sen2Duration > TRIGGER_DUR_MIN))) {
-        //Si la diferencia entre los sensores es menor que TRIGGER_DIFF_MAX y la duracion de los pulsos es mas que TRIGGER_DUR_MIN
-        //if (newspeed>0){
-        if ( sen1Timer < sen2Timer){
-          payload.peopleIn++ ;
-          payload.totalPeopleInside++;
-          
-          newData=true;
-        }
-        else{
-          payload.peopleOut++;
-          payload.totalPeopleInside--;
-          Serial.print("OUT. TOTAL: ");
-          Serial.println(payload.totalPeopleInside);
-          newData=true;
-        }
-        if(payload.totalPeopleInside > 0)
-          EEPROM.write(EEPROMAddress, payload.totalPeopleInside);
-//delay(400);
-      }
-      sen1Timer = 0;
-      sen2Timer = 0;
-      sen1Duration = 0;
-      sen2Duration = 0;
-    }
+    dis1ahora = digitalSmooth(dis1ahora, sensSmoothArray1);
+    dis2ahora = digitalSmooth(dis2ahora, sensSmoothArray2);
+    
+    updatePeaks();
+      
     
     sen1antes = sen1ahora; //1 valor de historial
     sen2antes = sen2ahora;
@@ -493,7 +420,7 @@ void loop() {
         }
         break;
       default:
-        Serial.println("No es una instrucción valida");
+        //Serial.println("No es una instrucción valida");
         break;
     }
   }
@@ -503,7 +430,7 @@ bool post(){
   //Post to Rx
   RF24NetworkHeader header(base_node);
   bool success = network.write(header, &payload, sizeof(payload));
-  Serial.print("Sending... ");
+  //Serial.print("Sending... ");
   if (success) {
     Serial.println("Payload sent");
     Serial.print("People in: ");
