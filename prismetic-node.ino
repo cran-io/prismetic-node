@@ -67,21 +67,22 @@ int mstatus=OUTCURVE;
 double sensorDistance=0.045;
 const double MAX_MEASURE=150;
 const unsigned int NSENSORS=2;
-const double TRIGGER_PEAK=5;
-const unsigned int MAX_PEAK_DIF=800;
+const double TRIGGER_PEAK=10;
+const unsigned int MAX_PEAK_DIF=1800;
 
 double curve_Peak[NSENSORS];
 unsigned int peak_Stamp[NSENSORS];
 unsigned int reading_Stamp=0;
 int lastTime_dif=0;
 int lastMeasure=0;
+const int MAX_SPEED=6;
 
 double newspeed=0;
 
 #define filterSamples   20
 int sensSmoothArray1 [filterSamples];
 int smoothData1;
-const unsigned int TIME_INTERPEOPLE =1000;
+const unsigned int TIME_INTERPEOPLE =500;
 
 int sensSmoothArray2 [filterSamples];
 int smoothData2;
@@ -228,7 +229,8 @@ void updatePeaks(){
     Serial.println("Medicion completa");
     lastMeasure=millis();
     set_Peak_Dif(peak_Stamp[MAX]-peak_Stamp[MIN]);
-    countPeople();
+    if (sensorDistance*8000/get_Peak_dif()< MAX_SPEED && sensorDistance*8000/get_Peak_dif() > -MAX_SPEED)
+      countPeople();
   }
 
   if (mstatus ==READING &&( (realtime-reading_Stamp) > MAX_PEAK_DIF)){    
@@ -311,7 +313,7 @@ void countPeople(){
       sen1Duration = 0;
       sen2Duration = 0;
       Serial.print("Person speed: ");
-      Serial.println(sensorDistance*10000/get_Peak_dif());
+      Serial.println(sensorDistance*8000/get_Peak_dif());
 }
 
 
