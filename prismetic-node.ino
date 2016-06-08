@@ -67,7 +67,7 @@ int mstatus=OUTCURVE;
 double sensorDistance=0.045;
 const double MAX_MEASURE=150;
 const unsigned int NSENSORS=2;
-const double TRIGGER_PEAK=10;
+const double TRIGGER_PEAK=200;
 const unsigned int MAX_PEAK_DIF=1800;
 
 double curve_Peak[NSENSORS];
@@ -75,7 +75,7 @@ unsigned int peak_Stamp[NSENSORS];
 unsigned int reading_Stamp=0;
 int lastTime_dif=0;
 int lastMeasure=0;
-const int MAX_SPEED=6;
+const int MAX_SPEED=20;
 
 double newspeed=0;
 
@@ -110,8 +110,8 @@ double sTocm(unsigned int sensorValue){
 
 void setup() {
   Serial.begin(57600);
-  //Serial.println("PRISMETIC by CRAN.IO");
-  //Serial.print("Starting... ");
+  Serial.println("PRISMETIC by CRAN.IO");
+  Serial.print("Starting... ");
   pinMode(LED_COUNT,OUTPUT);
   pinMode(LED_CONN,OUTPUT);
   digitalWrite(LED_COUNT,LOW);
@@ -124,16 +124,16 @@ void setup() {
   payload.totalPeopleInside = EEPROM.read(EEPROMAddress); //inicializar la gente que hay adentro (guardado en EEPROM)
   payload.peopleIn = 0;
   payload.peopleOut = 0;
-  //Serial.print("TOTAL: ");
-  //Serial.println(payload.totalPeopleInside);
+  Serial.print("TOTAL: ");
+  Serial.println(payload.totalPeopleInside);
   delay(60);                                                          //Warm-up del sensor
   for (int i = 1; i < MUESTRAS; i++){                                 //Init readings
     readings[0][i] = analogRead(A0);
     readings[1][i] = analogRead(A1);
-  /*  Serial.print("Reading 0: ");
+    Serial.print("Reading 0: ");
     Serial.println(sTocm(readings[0][i]));
     Serial.print("Reading 1: ");
-    Serial.println(sTocm(readings[1][i]));*/
+    Serial.println(sTocm(readings[1][i]));
     delay(100);
   }
 
@@ -186,14 +186,14 @@ int get_Peak_dif(void){
 }
 
 void updatePeaks(){
-  restaCurvas=dis1ahora-dis2ahora;
-  if (restaCurvas>99){
-    restaCurvas=0;
+  restaCurvas=(dis1ahora-dis2ahora)*(dis1ahora-dis2ahora);
+  if ((dis1ahora-dis2ahora)<0){
+    restaCurvas=-restaCurvas;
   }
 
 
   if (mstatus == OUTCURVE && (restaCurvas   > TRIGGER_PEAK || restaCurvas < -TRIGGER_PEAK) && millis()-lastMeasure>TIME_INTERPEOPLE){
-    Serial.println("Estamos dentro del rango de medicion");
+  //  Serial.println("Estamos dentro del rango de medicion");
     mstatus=READING;
     reading_Stamp=millis();
     curve_Peak[MIN]=0;
@@ -201,8 +201,8 @@ void updatePeaks(){
     set_Peak_Dif(0);
   }
     unsigned int realtime=millis();
-  /*Serial.println(restaCurvas);
-  Serial.println(realtime);*/
+ // Serial.println(restaCurvas);
+ // Serial.println(realtime);
   if (mstatus==READING && (realtime-reading_Stamp)<MAX_PEAK_DIF){
      /*if ((restaCurvas < -TRIGGER_PEAK) ||  (restaCurvas > TRIGGER_PEAK)){ 
         Serial.println(restaCurvas);
@@ -226,7 +226,7 @@ void updatePeaks(){
     mstatus=OUTCURVE;
     curve_Peak[MIN]=0;
     curve_Peak[MAX]=0;
-    Serial.println("Medicion completa");
+  //  Serial.println("Medicion completa");
     lastMeasure=millis();
     set_Peak_Dif(peak_Stamp[MAX]-peak_Stamp[MIN]);
     if (sensorDistance*8000/get_Peak_dif()< MAX_SPEED && sensorDistance*8000/get_Peak_dif() > -MAX_SPEED)
@@ -235,7 +235,7 @@ void updatePeaks(){
 
   if (mstatus ==READING &&( (realtime-reading_Stamp) > MAX_PEAK_DIF)){    
     mstatus=OUTCURVE;
-  //  Serial.println("Demasiado tiempo entre picos, probable error");
+   // Serial.println("Demasiado tiempo entre picos, probable error");
     reading_Stamp=millis();
     curve_Peak[MIN]=0;
     curve_Peak[MAX]=0;
@@ -298,6 +298,8 @@ void countPeople(){
         if ( get_Peak_dif()>0){
           payload.peopleIn++ ;
           payload.totalPeopleInside++;
+          Serial.println(3500);
+          Serial.println(millis());
           
           newData=true;
         }
@@ -305,6 +307,8 @@ void countPeople(){
           payload.peopleOut++;
           payload.totalPeopleInside--;
           newData=true;
+          Serial.println(-3500);
+          Serial.println(millis());
         }
         if(payload.totalPeopleInside > 0)
           EEPROM.write(EEPROMAddress, payload.totalPeopleInside);
@@ -446,6 +450,7 @@ bool post(){
     Serial.println(payload.peopleIn);
     Serial.print("People out: ");
     Serial.println(payload.peopleOut);
+    
     payload.peopleIn = 0;
     payload.peopleOut = 0;
     Serial.println("post OK.");
